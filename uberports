@@ -159,10 +159,6 @@ fn_parseInfoFile(){
     	done
 }
 
-fn_readConfigurationFile(){ 
-	(sed '/#/d; /^$/d' "$1") | fn_parseInfoFile
-}
-
 fn_printHelp(){
  printf '[USAGE]: %s [-S <pkg>|-u|-s|-q|-d|-V|-h]\n' 2>&1 \
 	 "${progname}"
