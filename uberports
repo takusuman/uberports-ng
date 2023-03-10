@@ -5,19 +5,17 @@
 # "Error proofing"
 set -e
 
-CHECKSUM=yes
-
 progname="${0}"
 shell="$(readlink -f /proc/$$/exe)"
 LC_ALL='POSIX'
 
+. /usr/etc/ports.conf
 . /etc/os-release
 unset NAME ID VERSION_ID PRETTY_NAME ANSI_COLOR CPE_NAME \
 	HOME_URL SUPPORT_URL BUG_REPORT_URL
 
 ports_directory='/usr/ports'
 slackware_pkg_directory="$(cd /var/log/packages; pwd -P)"
-slackbuilds_mirror='git://git.slackbuilds.org/slackbuilds.git'
 uberports_version='0.3'
 
 export progname shell ports_directory slackbuilds_mirror \
@@ -159,6 +157,10 @@ fn_parseInfoFile(){
 	while IFS='=' read identifier value; do
 		eval "$identifier=$value"
     	done
+}
+
+fn_readConfigurationFile(){ 
+	(sed '/#/d; /^$/d' "$1") | fn_parseInfoFile
 }
 
 fn_printHelp(){
