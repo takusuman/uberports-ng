@@ -143,8 +143,8 @@ fn_autoInstall(){
 			
 		( chdir "${slackbuild_dir}"
 		fn_downloadSource
-		# Run the script by sourcing it. If something goes wrong,
-		# uberports will be close.
+		# "Fork" the SlackBuild script process to a new Korn Shell
+		# instance.
 		"$shell" "./${current_package}.SlackBuild"
 		installpkg "/tmp/$PRGNAM-$VERSION-*-*.t?z" )
 	done
