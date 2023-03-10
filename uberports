@@ -1,0 +1,194 @@
+#!/bin/ksh
+# uberports(8): Simple heap of shell hacks for installing Slackbuilds in the BSD Ports style.
+# Copyright (c) 2021-2023 Luiz Antônio Rangel
+
+# "Error proofing"
+set -e
+
+CHECKSUM=yes
+
+progname="${0}"
+shell="$(readlink -f /proc/$$/exe)"
+LC_ALL='POSIX'
+
+. /etc/os-release
+unset NAME ID VERSION_ID PRETTY_NAME ANSI_COLOR CPE_NAME \
+	HOME_URL SUPPORT_URL BUG_REPORT_URL
+
+ports_directory='/usr/ports'
+slackware_pkg_directory="$(cd /var/log/packages; pwd -P)"
+slackbuilds_mirror='git://git.slackbuilds.org/slackbuilds.git'
+uberports_version='0.3'
+
+export progname shell ports_directory slackbuilds_mirror \
+	uberports_version LC_ALL
+
+chdir(){ cd "${@}"; }
+
+fn_syncRepository(){
+	repo_mirror_basename="${slackbuilds_mirror#*//}"
+  	repo_mirror_basename="${repo_mirror_basename%%/*}"
+  	printf 'Cloning repo via git (%s)\n' "${repo_mirror_basename}"
+  	git clone -v "${slackbuilds_mirror}" -b "${VERSION}" "${ports_directory}"
+  	unset VERSION
+	exit 0
+}
+
+fn_updateRepository(){
+	chdir "${ports_directory}"
+	git pull -v origin "${VERSION}"
+	chdir -
+	exit 0
+}
+
+fn_searchPackages(){
+    slackbuild="$1"
+    slackbuild_dir="`find "${ports_directory}" -name "${slackbuild}"`"
+    slackbuild_name="${slackbuild_dir##*/}"
+    # Return the .info file as plain-text, plus the Slackbuild directory.
+    echo "slackbuild_dir=${slackbuild_dir}"
+    cat "${slackbuild_dir}/${slackbuild_name}.info"
+}
+
+fn_printPackageInfo(){
+  queries=(${@})
+  queries_quant="${#@}"
+  for (( i=0; i < "${queries_quant}"; i++ )); do
+	fn_searchPackages "${queries[$i]}" | fn_parseInfoFile
+	printf '\
+Package name: %s
+Version: %s
+Directory (build scripts): %s
+Maintainer: %s
+Hotline: %s
+Dependencies: %s
+' "${PRGNAM}" "${VERSION}" "${slackbuild_dir}" "${MAINTAINER}" \
+    "${EMAIL}" "${REQUIRES:-None}"
+  done
+}
+
+fn_downloadSource(){
+ 	current_directory="$(pwd)"
+	ports_name="${current_directory##*/}"
+	. ./"${ports_name}.info" # Source .info file
+
+	if [[ "${DOWNLOAD}" =~ (UNSUPPORTED) \
+		&& "$(uname -m)" == 'x86_64' ]]; then
+		downloads=(${DOWNLOAD_x86_64})
+		md5sums=(${MD5SUM_x86_64})
+	elif [[ "${DOWNLOAD}" =~ (UNSUPPORTED) \
+		&& "$(uname -m)" != 'x86_64' ]]; then
+		printf 'This package isn'\''t support in this platform.\n' 1>&2
+		return 1
+	else
+		downloads=(${DOWNLOAD})
+		md5sums=(${MD5SUM})
+	fi
+	download_quant="${#downloads[@]}"
+
+	for (( j=0; j < "${download_quant}"; j++ )); do
+		current_download="${downloads[$j]}"
+		download_url_basename="${current_download#*//}"
+		download_url_basename="${download_url_basename%%/*}"
+		printf 'Downloading %s @ %s (%s).\n' \
+			"${PRGNAM}" "${VERSION}" "${download_url_basename}"
+		curl -# -L "${current_download}" -O
+	done
+
+	if echo "$CHECKSUM" | grep -i '^y' &>/dev/null \
+		&& [ "${download_quant}" == "${#md5sums[@]}" ]; then
+		for (( m=0; m < ${download_quant}; m++ )); do
+			download_filename="${downloads[$m]##*/}"
+			download_checksum="$(md5sum "./${download_filename}")"
+			download_checksum="${download_checksum%% *}"
+
+			if [ "${download_checksum}" != "${md5sums[$m]}" ]; then
+				printf 'Error: %s checksum don'\''t match.' 1>&2 \
+					"${download_filename}"
+				return 1
+			else
+				continue
+			fi
+		done	
+	fi
+}
+
+fn_autoInstall(){
+	packages=(${@})
+	packages_quant="${#packages[@]}"
+	for (( k=0; k < "${packages_quant}"; k++ )); do
+		current_package=${packages[$k]}
+		# Load package information
+		fn_searchPackages "${current_package}" \
+			| fn_parseInfoFile
+
+		# Solve the dependencies until REQUIRES isn't defined
+		# This doesn't seem to be a good algorithm, since it will loop
+		# at the last package if we don't verify if the dependency is
+		# already installed.
+		dependencies=(${REQUIRES})
+		dependencies_quant="${#dependencies[@]}"
+		for (( l=0; l < ${dependencies_quant}; l++ )); do
+			if ls -l "${slackware_pkg_directory}" \
+				| grep -i "${dependencies[$l]}" &> /dev/null; then
+				printf '%s is already installed.\n' "${dependencies[$l]}"
+				unset dependencies[$l]
+			elif [[ "${dependencies[@]}" =~ (README) ]]; then
+				printf 'This package requires that you read the %s file.' 1>&2\
+					"${slackbuild_dir}/README"
+			else
+				fn_autoInstall "${dependencies[$l]}"
+			fi
+		done
+			
+		( chdir "${slackbuild_dir}"
+		fn_downloadSource
+		# Run the script by sourcing it. If something goes wrong,
+		# uberports will be close.
+		"$shell" "./${current_package}.SlackBuild"
+		installpkg "/tmp/$PRGNAM-$VERSION-*-*.t?z" )
+	done
+}
+
+fn_parseInfoFile(){
+	# Parses the .info file from Slackbuild by using the '=' character
+	# as a separator and reading the identifier and value separately,
+	# then declaring it as a variable in the script using eval.
+	# The input to this function needs to be passed via a pipe or
+	# redirection.
+	while IFS='=' read identifier value; do
+		eval "$identifier=$value"
+    	done
+}
+
+fn_printHelp(){
+ printf '[USAGE]: %s [-S <pkg>|-u|-s|-q|-d|-V|-h]\n' 2>&1 \
+	 "${progname}"
+ exit 1
+}
+
+fn_printVersion(){
+ printf '
+%s
+
+Copyright (c) 2021-2023 Luiz Antônio Rangel
+Licenced under the ISC licence
+' "${uberports_version}"
+}
+
+fn_main(){
+  OPTPARAMS="S:usq:dV"
+  while getopts "${OPTPARAMS}" OPT; do
+    case "${OPT}" in
+      "S") fn_autoInstall "${OPTARG}" ;;
+      "u") fn_updateRepository ;;
+      "s") fn_syncRepository ;;
+      "q") fn_printPackageInfo "${OPTARG}" ;;
+      "d") fn_downloadSource;;
+      "V") fn_printVersion ;;
+      "?") fn_printHelp ;;
+    esac
+  done
+}
+
+fn_main ${@}
