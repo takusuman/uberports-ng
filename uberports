@@ -120,10 +120,6 @@ fn_autoInstall(){
 		fn_searchPackages "${current_package}" \
 			| fn_parseInfoFile
 
-		# Solve the dependencies until REQUIRES isn't defined
-		# This doesn't seem to be a good algorithm, since it will loop
-		# at the last package if we don't verify if the dependency is
-		# already installed.
 		dependencies=(${REQUIRES})
 		dependencies[${#dependencies[@]}]="${current_package}"
 		dependencies_quant="${#dependencies[@]}"
