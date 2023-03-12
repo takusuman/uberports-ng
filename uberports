@@ -29,14 +29,12 @@ fn_syncRepository(){
   	printf 'Cloning repo via git (%s)\n' "${repo_mirror_basename}"
   	git clone -v "${slackbuilds_mirror}" -b "${VERSION}" "${ports_directory}"
   	unset VERSION
-	exit 0
 }
 
 fn_updateRepository(){
 	chdir "${ports_directory}"
 	git pull -v origin "${VERSION}"
 	chdir -
-	exit 0
 }
 
 fn_searchPackages(){
@@ -170,7 +168,7 @@ fn_parseInfoFile(){
 }
 
 fn_printHelp(){
- printf '[USAGE]: %s [-S <pkg>|-u|-s|-q|-d|-V|-h]\n' 2>&1 \
+ printf '[USAGE]: %s [-S|-u|[-s|-q <pkg>]|-d|-V|-h]\n' 2>&1 \
 	 "${progname}"
  exit 1
 }
@@ -185,7 +183,7 @@ Licenced under the ISC licence
 }
 
 fn_main(){
-  OPTPARAMS="S:usq:dV"
+  OPTPARAMS="Sus:q:dV"
   while getopts "${OPTPARAMS}" OPT; do
     case "${OPT}" in
       "S") fn_syncRepository ;;
