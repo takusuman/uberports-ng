@@ -115,7 +115,7 @@ fn_autoInstall(){
 	packages=(${@})
 	packages_quant="${#packages[@]}"
 	for (( k=0; k < "${packages_quant}"; k++ )); do
-		current_package=${packages[$k]}
+		current_package="${packages[$k]}"
 		# Load package information
 		fn_searchPackages "${current_package}" \
 			| fn_parseInfoFile
@@ -125,27 +125,41 @@ fn_autoInstall(){
 		# at the last package if we don't verify if the dependency is
 		# already installed.
 		dependencies=(${REQUIRES})
+		dependencies[${#dependencies[@]}]="${current_package}"
 		dependencies_quant="${#dependencies[@]}"
-		for (( l=0; l < ${dependencies_quant}; l++ )); do
-			if ls -l "${slackware_pkg_directory}" \
-				| grep -i "${dependencies[$l]}" &> /dev/null; then
-				printf '%s is already installed.\n' "${dependencies[$l]}"
-				unset dependencies[$l]
-			elif [[ "${dependencies[@]}" =~ (README) ]]; then
-				printf 'This package requires that you read the %s file.' 1>&2\
-					"${slackbuild_dir}/README"
-			else
-				fn_autoInstall "${dependencies[$l]}"
-			fi
-		done
-			
-		( chdir "${slackbuild_dir}"
-		fn_downloadSource
-		# "Fork" the SlackBuild script process to a new Korn Shell
-		# instance.
-		"$shell" "./${current_package}.SlackBuild"
-		installpkg "/tmp/$PRGNAM-$VERSION-*-*.t?z" )
+
+		if  [ -n "$REQUIRES" ]; then
+			for (( l=0; l < ${dependencies_quant}; l++ )); do
+				if ls -l "${slackware_pkg_directory}" \
+					| grep -i "${dependencies[$l]}" &> /dev/null; then
+					printf '%s is already installed.\n' "${dependencies[$l]}"
+				else
+					fn_buildAndInstallPackage "${dependencies[$l]}"
+				fi
+			done
+		elif [[ "$REQUIRES" =~ (README) ]]; then
+			printf 'This package requires that you read the %s file.' 1>&2\
+				"${slackbuild_dir}/README"
+			exit
+		else
+			fn_buildAndInstallPackage "${current_package}"
+		fi	
+
 	done
+}
+
+fn_buildAndInstallPackage(){
+	# Load package information again
+	package="$1"
+	fn_searchPackages "${package}" \
+		| fn_parseInfoFile
+	
+	chdir "${slackbuild_dir}"
+	fn_downloadSource
+	# "Fork" the SlackBuild script process to a new Korn Shell
+	# instance.
+	"$shell" "./${package}.SlackBuild"
+	installpkg "/tmp/$PRGNAM-$VERSION-*-*.t?z"
 }
 
 fn_parseInfoFile(){
