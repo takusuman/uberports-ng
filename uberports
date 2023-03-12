@@ -192,9 +192,9 @@ fn_main(){
   OPTPARAMS="S:usq:dV"
   while getopts "${OPTPARAMS}" OPT; do
     case "${OPT}" in
-      "S") fn_autoInstall "${OPTARG}" ;;
+      "S") fn_syncRepository ;;
       "u") fn_updateRepository ;;
-      "s") fn_syncRepository ;;
+      "s") fn_autoInstall "${OPTARG}" ;;
       "q") fn_printPackageInfo "${OPTARG}" ;;
       "d") fn_downloadSource;;
       "V") fn_printVersion ;;
